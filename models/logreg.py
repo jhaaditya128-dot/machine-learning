@@ -12,9 +12,12 @@ def main(train_path, eval_path, pred_path):
         eval_path: Path to CSV file containing dataset for evaluation.
         pred_path: Path to save predictions.
     """
-    x_train, y_train = util.load_dataset(train_path, add_intercept=True)
+    x_train, y_train = util.load_dataset('data/ds1_train.csv', add_intercept=True)
 
     # *** START CODE HERE ***
+    clf = LogisticRegression()
+    clf.fit(x_train, y_train)
+    clf.predict(x_eval)
     # *** END CODE HERE ***
 
 
