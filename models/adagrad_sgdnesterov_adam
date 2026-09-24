@@ -1,0 +1,153 @@
+# This Python 3 environment comes with many helpful analytics libraries installed
+# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python
+# For example, here's several helpful packages to load
+
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+import sys
+# Input data files are available in the read-only "../input/" directory
+# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
+
+import os
+for dirname, _, filenames in os.walk('/kaggle/input'):
+    for filename in filenames:
+        print(os.path.join(dirname, filename))
+
+# You can write up to 20GB to the current directory (/kaggle/working/) that gets preserved as output when you create a version using "Save & Run All" 
+# You can also write temporary files to /kaggle/temp/, but they won't be saved outside of the current session
+
+# Use the kagglehub client library to attach Kaggle resources like competitions, datasets, and models to your session
+# Learn more about kagglehub: https://github.com/Kaggle/kagglehub/blob/main/README.md
+import matplotlib.pyplot as plt
+import kagglehub
+# kagglehub.dataset_download('<owner>/<dataset-slug>')
+#from utils import util
+
+class LogisticModel(object):
+
+    def __init__(self, step_size=0.001, max_iter=50, eps=1e-5,
+                 theta_0=None, verbose=True):
+        """
+        Args:
+            step_size: Step size for iterative solvers only.
+            max_iter: Maximum number of iterations for the solver.
+            eps: Threshold for determining convergence.
+            theta_0: Initial guess for theta. If None, use the zero vector.
+            verbose: Print loss values during training.
+        """
+        self.theta = theta_0
+        self.step_size = step_size
+        self.max_iter = max_iter
+        self.eps = eps
+        
+        self.ada = []
+        
+        self.sgd = []
+        
+        self.adam = []
+
+        self.verbose =verbose 
+
+    def adam_re(self, x_, y_,variance=0,rho=0.9,p=0,m1=0,m2=0,beta1=0.9,beta2=0.999,e=1e-8):
+        """Run solver to fit linear model.
+
+        Args:
+            x: Training example inputs. Shape (m, n).
+            y: Training example labels. Shape (m,).
+        """
+        
+        
+        self.theta_0 = np.zeros((x_.shape[1], 10))
+        w1 = np.copy(self.theta_0)
+        w2 = np.copy(self.theta_0)
+        w3 = np.copy(self.theta_0)
+        step=0
+        for iter in range (self.max_iter):
+            indices=np.arange(x_.shape[0])
+            np.random.shuffle(indices)
+            x_sh=x_[indices]
+            y_sh=y_[indices]
+            
+            epoch_ada_loss, epoch_sgd_loss, epoch_adam_loss = [], [], []
+            for t in range(0,x_.shape[0],128):
+                x=x_sh[t:t+128]
+                y=y_sh[t:t+128]
+                step+=1
+                logits1=x@w1
+                shifted_logits1=logits1-np.max(logits1,axis=1,keepdims=True)
+                loss=-np.mean(np.log(np.exp(shifted_logits1)/np.sum(np.exp(shifted_logits1),axis=1,keepdims=True))[np.arange(y.size),y])
+                epoch_ada_loss.append(loss)
+                y_hot=np.zeros((y.size,10))
+                y_hot[np.arange(y.size),y]=1
+                dw1=1/128*x.T@((np.exp(shifted_logits1)/np.sum(np.exp(shifted_logits1),axis=1,keepdims=True))-y_hot)
+                variance=variance+dw1*dw1
+                w1-=self.step_size*dw1/(np.sqrt(variance)+e)
+
+                logits2=x@w2
+                shifted_logits2=logits2-np.max(logits2,axis=1,keepdims=True)
+                loss=-np.mean(np.log(np.exp(shifted_logits2)/np.sum(np.exp(shifted_logits2),axis=1,keepdims=True))[np.arange(y.size),y])
+                epoch_sgd_loss.append(loss)
+                logits2_2=x@(w2+rho*p)
+                shifted_logits2_2=logits2_2-np.max(logits2_2,axis=1,keepdims=True)
+                dw2=1/128*x.T@(np.exp(shifted_logits2_2)/np.sum(np.exp(shifted_logits2_2),axis=1,keepdims=True)-y_hot)
+                p = rho*p - self.step_size*dw2
+                w2=w2+p
+                
+                logits3=x@w3
+                shifted_logits3=logits3-np.max(logits3,axis=1,keepdims=True)
+                loss=-np.mean(np.log(np.exp(shifted_logits3)/np.sum(np.exp(shifted_logits3),axis=1,keepdims=True))[np.arange(y.size),y])
+                epoch_adam_loss.append(loss)
+                dw3=1/128*x.T@(np.exp(shifted_logits3)/np.sum(np.exp(shifted_logits3),axis=1,keepdims=True)-y_hot)
+                m1=beta1*m1+(1-beta1)*dw3
+                m2=beta2*m2+(1-beta2)*dw3*dw3
+                w3=w3-self.step_size*m1/((np.sqrt(m2/(1-beta2**(step)))+e)*(1-beta1**(step)))
+
+            self.ada.append(np.mean(epoch_ada_loss))
+            self.sgd.append(np.mean(epoch_sgd_loss))
+            self.adam.append(np.mean(epoch_adam_loss))
+
+    def plot(self):
+            iterations = np.arange(len(self.adam))
+            plt.figure(figsize=(7, 7))
+            plt.plot(iterations, self.ada, label='AdaGrad', color='blue')
+            plt.plot(iterations, self.sgd, label='SGDNesterov', color='green')
+            plt.plot(iterations, self.adam, label='Adam', color='red')
+            plt.xlabel('iterations over entire dataset')
+            plt.ylabel('training cost')
+            plt.title('MNIST Logistic Regression')
+            plt.xlim(0, 50)
+            plt.ylim(0.1, 0.9)
+            plt.grid(True, linestyle='--', alpha=0.7)
+            plt.legend()
+            
+            plt.show()
+
+import numpy as np
+import struct
+
+def load_idx_images(path):
+    with open(path, 'rb') as f:
+        magic, num, rows, cols = struct.unpack('>IIII', f.read(16))
+        data = np.frombuffer(f.read(), dtype=np.uint8)
+        return data.reshape(num, rows*cols)
+
+def load_idx_labels(path):
+    with open(path, 'rb') as f:
+        magic, num = struct.unpack('>II', f.read(8))
+        return np.frombuffer(f.read(), dtype=np.uint8)
+
+# fill in the exact paths printed by the glob search above
+train_images_path = '/kaggle/input/datasets/hojjatk/mnist-dataset/train-images.idx3-ubyte'
+train_labels_path = '/kaggle/input/datasets/hojjatk/mnist-dataset/train-labels.idx1-ubyte'
+
+x_ = load_idx_images(train_images_path).astype(np.float64) / 255.0
+intercept = np.ones((x_.shape[0], 1))
+x_ = np.hstack((x_, intercept))
+y_ = load_idx_labels(train_labels_path).astype(int)
+
+print(x_.shape, y_.shape)   # sanity check — expect (60000, 784) and (60000,)
+
+model = LogisticModel(step_size=0.001)   # object created
+model.adam_re(x_, y_)                                    # training runs here
+model.plot() 
+
